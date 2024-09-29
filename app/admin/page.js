@@ -1,0 +1,436 @@
+// File: AdminPage.js
+
+'use client';
+import { useState, useEffect } from 'react';
+import { supabase } from '@/utils/supabase';
+import { useRouter } from 'next/navigation';
+import { ToastContainer, toast } from 'react-toastify';
+import { X, Search, Trash2 } from 'lucide-react';
+import 'react-toastify/dist/ReactToastify.css';
+import 'tailwindcss/tailwind.css';
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+
+export default function AdminPage() {
+  const [results, setResults] = useState([]);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [selectedResult, setSelectedResult] = useState(null);
+  const [examQuestions, setExamQuestions] = useState([]);
+  const [showLoginPopup, setShowLoginPopup] = useState(false);
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [language, setLanguage] = useState('ar');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [resultToDelete, setResultToDelete] = useState(null);
+  const [deleteConfirmationEmail, setDeleteConfirmationEmail] = useState('');
+  const router = useRouter();
+
+  useEffect(() => {
+    const savedLanguage = localStorage.getItem('language');
+    if (savedLanguage) {
+      setLanguage(savedLanguage);
+    }
+    const checkAdminAccess = async () => {
+      const storedAdminEmail = localStorage.getItem('adminEmail');
+      if (!storedAdminEmail) {
+        router.push('/');
+      } else {
+        setAdminEmail(storedAdminEmail);
+        await verifyAdmin(storedAdminEmail);
+      }
+    };
+
+    checkAdminAccess();
+  }, [router]);
+
+  const toggleLanguage = () => {
+    const newLanguage = language === 'ar' ? 'en' : 'ar';
+    setLanguage(newLanguage);
+    localStorage.setItem('language', newLanguage);
+  };
+
+  const verifyAdmin = async (email) => {
+    try {
+      const { data, error } = await supabase
+        .from('admins')
+        .select('*')
+        .eq('email', email);
+
+      if (error) throw error;
+      if (data.length > 0) {
+        setIsAdmin(true);
+        fetchResults();
+        fetchExamQuestions();
+      } else {
+        router.push('/');
+      }
+    } catch (error) {
+      console.error('Error checking admin access:', error.message);
+      toast.error(language === 'ar' ? `خطأ في التحقق من صلاحيات المسؤول: ${error.message}` : `Error checking admin access: ${error.message}`);
+      router.push('/');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchResults = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('exam_results')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setResults(data);
+    } catch (error) {
+      console.error('Error fetching results:', error.message);
+      toast.error(language === 'ar' ? `خطأ في جلب النتائج: ${error.message}` : `Error fetching results: ${error.message}`);
+    }
+  };
+
+  const fetchExamQuestions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('exam_questions')
+        .select('*')
+        .order('id', { ascending: true });
+
+      if (error) throw error;
+
+      const groupedQuestions = data.reduce((acc, question) => {
+        if (!acc[question.section_name]) {
+          acc[question.section_name] = [];
+        }
+        acc[question.section_name].push(question);
+        return acc;
+      }, {});
+
+      setExamQuestions(Object.entries(groupedQuestions).map(([name, questions]) => ({
+        name,
+        questions
+      })));
+    } catch (error) {
+      console.error('Error fetching exam questions:', error.message);
+      toast.error(language === 'ar' ? `خطأ في جلب أسئلة الاختبار: ${error.message}` : `Error fetching exam questions: ${error.message}`);
+    }
+  };
+
+  const handleResultClick = (result) => {
+    setSelectedResult(result);
+  };
+
+  const handleSearch = (e) => {
+    setSearchTerm(e.target.value);
+  };
+
+  const filteredResults = results.filter((result) =>
+    result.user_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    result.id_number.includes(searchTerm) ||
+    result.phone_number.includes(searchTerm)
+  );
+
+  const handleDeleteClick = (result) => {
+    setResultToDelete(result);
+    setShowDeleteConfirmation(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (deleteConfirmationEmail !== adminEmail) {
+      toast.error(language === 'ar' ? 'البريد الإلكتروني غير صحيح' : 'Invalid email');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('exam_results')
+        .delete()
+        .eq('id', resultToDelete.id);
+
+      if (error) throw error;
+
+      toast.success(language === 'ar' ? 'تم حذف النتيجة بنجاح' : 'Result deleted successfully');
+      setShowDeleteConfirmation(false);
+      setResultToDelete(null);
+      setDeleteConfirmationEmail('');
+      fetchResults();
+    } catch (error) {
+      console.error('Error deleting result:', error.message);
+      toast.error(language === 'ar' ? `خطأ في حذف النتيجة: ${error.message}` : `Error deleting result: ${error.message}`);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('adminEmail');
+    router.push('/');
+  };
+
+  const renderAnswerReview = () => {
+    if (!selectedResult) return null;
+
+    return (
+      <div className={`mt-8 bg-white p-6 rounded-lg shadow-lg w-full max-w-6xl border-t-4 border-green-600 ${language === 'ar' ? 'text-right' : 'text-left'}`}>
+        <h3 className="text-2xl font-semibold mb-4 text-green-800">
+          {language === 'ar' ? `مراجعة الإجابات لـ ${selectedResult.user_name}` : `Answer Review for ${selectedResult.user_name}`}
+        </h3>
+        <p className="mb-2">{language === 'ar' ? `رقم الهوية: ${selectedResult.id_number}` : `ID Number: ${selectedResult.id_number}`}</p>
+        <p className="mb-4">{language === 'ar' ? `رقم الهاتف: ${selectedResult.phone_number}` : `Phone Number: ${selectedResult.phone_number}`}</p>
+        {examQuestions.map((section, sectionIndex) => (
+          <div key={sectionIndex} className="mb-6">
+            <h4 className="text-lg font-medium mb-2 text-green-700">{section.name}</h4>
+            {section.questions.map((question, questionIndex) => {
+              const userAnswer = selectedResult.answers[`${sectionIndex}-${questionIndex}`];
+              let isCorrect = false;
+
+              if (question.question_type === 'multiple') {
+                isCorrect = question.correct_answers && question.correct_answers.includes(userAnswer);
+              } else if (question.question_type === 'truefalse') {
+                isCorrect = userAnswer !== undefined && question.correct_answers && question.correct_answers.includes(userAnswer.toString());
+              } else if (question.question_type === 'written') {
+                const lowerCaseAnswer = userAnswer ? userAnswer.toLowerCase().trim() : '';
+                isCorrect = question.accepted_answers && question.accepted_answers.some((answer) => lowerCaseAnswer.includes(answer.toLowerCase()));
+              }
+
+              return (
+                <div key={questionIndex} className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <p className="font-medium text-gray-700">{question.question_text}</p>
+                  <p className="mt-2">
+                    {language === 'ar' ? 'إجابة المستخدم: ' : 'User Answer: '}
+                    {userAnswer !== undefined ? (
+                      question.question_type === 'truefalse' ? 
+                        (userAnswer === 'true' ? 'صحيح' : 'خطأ') : 
+                        userAnswer.toString()
+                    ) : (
+                      language === 'ar' ? 'لم تتم الإجابة' : 'Not answered'
+                    )}
+                  </p>
+                  {question.question_type !== 'written' && question.correct_answers && (
+                    <p className="mt-1">
+                      {language === 'ar' ? 'الإجابة الصحيحة: ' : 'Correct Answer: '}
+                      {question.question_type === 'truefalse' ? 
+                        (question.correct_answers[0] === 'true' ? 'صحيح' : 'خطأ') : 
+                        question.correct_answers.join(', ')}
+                    </p>
+                  )}
+                  <p className={`mt-1 font-semibold ${isCorrect ? 'text-green-600' : 'text-red-600'}`}>
+                    {isCorrect ? (language === 'ar' ? 'صحيح' : 'Correct') : (language === 'ar' ? 'خاطئ' : 'Incorrect')}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+        <Button
+          onClick={() => setSelectedResult(null)}
+          className="mt-4 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-all"
+        >
+          {language === 'ar' ? 'العودة إلى النتائج' : 'Back to Results'}
+        </Button>
+      </div>
+    );
+  };
+
+  if (language === 'ar') {
+    return (
+      <div className="min-h-screen p-8 bg-gradient-to-r from-green-50 to-blue-50 rtl">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex justify-between items-center mb-8">
+            <div className="flex items-center space-x-4">
+              <Button onClick={handleLogout} className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-all">
+                تسجيل الخروج
+              </Button>
+              <div className="flex items-center space-x-2">
+                <Label htmlFor="language-toggle" className="text-sm font-medium">العربية</Label>
+                <Switch
+                  id="language-toggle"
+                  checked={true}
+                  onCheckedChange={toggleLanguage}
+                />
+              </div>
+            </div>
+            <h1 className="text-3xl font-bold text-green-800">صفحة الإدارة</h1>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow-lg border-t-4 border-green-600 mb-8">
+            <div className="flex justify-between items-center mb-4">
+              <div className="flex items-center">
+                <Search className="text-gray-400 ml-2" />
+                <Input
+                  type="text"
+                  placeholder="بحث بالاسم أو رقم الهوية أو رقم الهاتف"
+                  value={searchTerm}
+                  onChange={handleSearch}
+                  className="w-64"
+                />
+              </div>
+              <h2 className="text-2xl font-semibold text-green-700">نتائج الاختبار</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full bg-white border border-gray-300">
+                <thead>
+                  <tr className="bg-gray-100">
+                    {['الإجراءات', 'تاريخ الإكمال', 'الدرجة', 'رقم الهاتف', 'رقم الهوية', 'الاسم'].map((header, index) => (
+                      <th key={index} className="py-2 px-4 border-b text-center">{header}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredResults.map((result) => (
+                    <tr key={result.id} className="hover:bg-gray-50">
+                      <td className="py-2 px-4 border-b text-center">
+                        <div className="flex justify-center space-x-2">
+                          <Button
+                            onClick={() => handleResultClick(result)}
+                            className="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600 transition-all"
+                          >
+                            مراجعة
+                          </Button>
+                          <Button
+                            onClick={() => handleDeleteClick(result)}
+                            className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 transition-all"
+                          >
+                            حذف
+                          </Button>
+                        </div>
+                      </td>
+                      <td className="py-2 px-4 border-b text-center">{new Date(result.created_at).toLocaleString('ar-SA')}</td>
+                      <td className="py-2 px-4 border-b text-center">{result.score}</td>
+                      <td className="py-2 px-4 border-b text-center">{result.phone_number}</td>
+                      <td className="py-2 px-4 border-b text-center">{result.id_number}</td>
+                      <td className="py-2 px-4 border-b text-center">{result.user_name}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {renderAnswerReview()}
+        </div>
+        <Dialog open={showDeleteConfirmation} onOpenChange={setShowDeleteConfirmation}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>تأكيد الحذف</DialogTitle>
+            </DialogHeader>
+            <div className="py-4">
+              <p>هل أنت متأكد أنك تريد حذف نتيجة {resultToDelete?.user_name}؟</p>
+              <Input
+                type="email"
+                value={deleteConfirmationEmail}
+                onChange={(e) => setDeleteConfirmationEmail(e.target.value)}
+                placeholder="أدخل بريدك الإلكتروني للتأكيد"
+                className="mt-4"
+              />
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button onClick={() => setShowDeleteConfirmation(false)}>إلغاء</Button>
+              <Button onClick={handleDeleteConfirm} className="bg-red-500 text-white hover:bg-red-600">حذف</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+        <ToastContainer rtl position="top-right" />
+      </div>
+    );
+  } else {
+    return (
+      <div className="min-h-screen p-8 bg-gradient-to-r from-green-50 to-blue-50 ltr">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex justify-between items-center mb-8">
+            <h1 className="text-3xl font-bold text-green-800">Admin Page</h1>
+            <div className="flex items-center space-x-4">
+              <Button onClick={handleLogout} className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-all">
+                Logout
+              </Button>
+              <div className="flex items-center space-x-2">
+                <Label htmlFor="language-toggle" className="text-sm font-medium">English</Label>
+                <Switch
+                  id="language-toggle"
+                  checked={false}
+                  onCheckedChange={toggleLanguage}
+                />
+              </div>
+            </div>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow-lg border-t-4 border-green-600 mb-8">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-semibold text-green-700">Exam Results</h2>
+              <div className="flex items-center">
+                <Search className="text-gray-400 mr-2" />
+                <Input
+                  type="text"
+                  placeholder="Search by name, ID, or phone"
+                  value={searchTerm}
+                  onChange={handleSearch}
+                  className="w-64"
+                />
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full bg-white border border-gray-300">
+                <thead>
+                  <tr className="bg-gray-100">
+                    {['Name', 'ID Number', 'Phone Number', 'Score', 'Completion Date', 'Actions'].map((header, index) => (
+                      <th key={index} className="py-2 px-4 border-b text-center">{header}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredResults.map((result) => (
+                    <tr key={result.id} className="hover:bg-gray-50">
+                      <td className="py-2 px-4 border-b text-center">{result.user_name}</td>
+                      <td className="py-2 px-4 border-b text-center">{result.id_number}</td>
+                      <td className="py-2 px-4 border-b text-center">{result.phone_number}</td>
+                      <td className="py-2 px-4 border-b text-center">{result.score}</td>
+                      <td className="py-2 px-4 border-b text-center">{new Date(result.created_at).toLocaleString('en-US')}</td>
+                      <td className="py-2 px-4 border-b text-center">
+                        <div className="flex justify-center space-x-2">
+                          <Button
+                            onClick={() => handleResultClick(result)}
+                            className="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600 transition-all"
+                          >
+                            Review
+                          </Button>
+                          <Button
+                            onClick={() => handleDeleteClick(result)}
+                            className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 transition-all"
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {renderAnswerReview()}
+        </div>
+        <Dialog open={showDeleteConfirmation} onOpenChange={setShowDeleteConfirmation}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Confirm Deletion</DialogTitle>
+            </DialogHeader>
+            <div className="py-4">
+              <p>Are you sure you want to delete {resultToDelete?.user_name}'s result?</p>
+              <Input
+                type="email"
+                value={deleteConfirmationEmail}
+                onChange={(e) => setDeleteConfirmationEmail(e.target.value)}
+                placeholder="Enter your email to confirm"
+                className="mt-4"
+              />
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button onClick={() => setShowDeleteConfirmation(false)}>Cancel</Button>
+              <Button onClick={handleDeleteConfirm} className="bg-red-500 text-white hover:bg-red-600">Delete</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+        <ToastContainer position="top-right" />
+      </div>
+    );
+  }
+}
