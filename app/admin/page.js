@@ -1,7 +1,7 @@
 // File: AdminPage.js
 
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/utils/supabase';
 import { useRouter } from 'next/navigation';
 import { ToastContainer, toast } from 'react-toastify';
@@ -29,6 +29,7 @@ export default function AdminPage() {
   const [resultToDelete, setResultToDelete] = useState(null);
   const [deleteConfirmationEmail, setDeleteConfirmationEmail] = useState('');
   const router = useRouter();
+  const reviewSectionRef = useRef(null);;
 
   useEffect(() => {
     const savedLanguage = localStorage.getItem('language');
@@ -122,6 +123,9 @@ export default function AdminPage() {
 
   const handleResultClick = (result) => {
     setSelectedResult(result);
+    setTimeout(() => {
+      reviewSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
   };
 
   const handleSearch = (e) => {
@@ -173,7 +177,7 @@ export default function AdminPage() {
     if (!selectedResult) return null;
 
     return (
-      <div className={`mt-8 bg-white p-6 rounded-lg shadow-lg w-full max-w-6xl border-t-4 border-green-600 ${language === 'ar' ? 'text-right' : 'text-left'}`}>
+      <div ref={reviewSectionRef} className={`mt-8 bg-white p-6 rounded-lg shadow-lg w-full max-w-6xl border-t-4 border-green-600 ${language === 'ar' ? 'text-right' : 'text-left'} ${language === 'ar' ? 'rtl' : 'ltr'}`}>
         <h3 className="text-2xl font-semibold mb-4 text-green-800">
           {language === 'ar' ? `مراجعة الإجابات لـ ${selectedResult.user_name}` : `Answer Review for ${selectedResult.user_name}`}
         </h3>
@@ -191,8 +195,10 @@ export default function AdminPage() {
               } else if (question.question_type === 'truefalse') {
                 isCorrect = userAnswer !== undefined && question.correct_answers && question.correct_answers.includes(userAnswer.toString());
               } else if (question.question_type === 'written') {
-                const lowerCaseAnswer = userAnswer ? userAnswer.toLowerCase().trim() : '';
-                isCorrect = question.accepted_answers && question.accepted_answers.some((answer) => lowerCaseAnswer.includes(answer.toLowerCase()));
+                const lowerCaseAnswer = typeof userAnswer === 'string' ? userAnswer.toLowerCase().trim() : '';
+                isCorrect = question.accepted_answers && question.accepted_answers.some((answer) => 
+                  typeof answer === 'string' && lowerCaseAnswer.includes(answer.toLowerCase())
+                );
               }
 
               return (
@@ -225,7 +231,10 @@ export default function AdminPage() {
           </div>
         ))}
         <Button
-          onClick={() => setSelectedResult(null)}
+          onClick={() => {
+            setSelectedResult(null);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
           className="mt-4 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-all"
         >
           {language === 'ar' ? 'العودة إلى النتائج' : 'Back to Results'}

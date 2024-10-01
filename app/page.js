@@ -13,11 +13,15 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 
+
 export default function Home() {
+
+  
   const [name, setName] = useState('');
   const [idNumber, setIdNumber] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -90,17 +94,17 @@ export default function Home() {
   return (
     <div className={`min-h-screen bg-gradient-to-r from-green-50 to-blue-50 flex items-center justify-center relative p-4 ${language === 'ar' ? 'rtl' : 'ltr'}`}>
       <div className="absolute top-4 right-4 flex items-center space-x-2">
-        <Label htmlFor="language-toggle">{language === 'ar' ? 'English' : 'العربية'}</Label>
+        <Label htmlFor="language-toggle">{language === 'ar' ? 'العربية' : 'English'}</Label>
         <Switch id="language-toggle" checked={language === 'ar'} onCheckedChange={toggleLanguage} />
       </div>
       <Dialog>
         <DialogTrigger asChild>
-          <Button variant="outline" className="absolute top-4 left-4">
+          <Button className="absolute top-4 left-4 bg-green-500 hover:bg-green-600 text-white">
             {language === 'ar' ? 'تسجيل دخول المسؤول' : 'Admin Login'}
           </Button>
         </DialogTrigger>
         <DialogContent>
-          <DialogHeader>
+          <DialogHeader className='flex items-center'>
             <DialogTitle>{language === 'ar' ? 'تسجيل دخول المسؤول' : 'Admin Login'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
@@ -109,23 +113,29 @@ export default function Home() {
               value={adminEmail}
               onChange={(e) => setAdminEmail(e.target.value)}
               placeholder={language === 'ar' ? 'أدخل البريد الإلكتروني للمسؤول' : 'Enter admin email'}
+              className={language === 'ar' ? 'text-right' : 'text-left'}
             />
             <Input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={language === 'ar' ? 'أدخل اسمك' : 'Enter your name'}
+              className={language === 'ar' ? 'text-right' : 'text-left'}
             />
-            <Button onClick={handleAdminSubmit}>
-              {language === 'ar' ? 'تسجيل الدخول' : 'Login'}
-            </Button>
           </div>
+           <DialogFooter className="w-full flex">
+            <div className={language === 'ar' ? 'ml-auto' : 'mr-auto'}>
+              <Button onClick={handleAdminSubmit} className="bg-green-500 hover:bg-green-600 text-white">
+                {language === 'ar' ? 'تسجيل الدخول' : 'Login'}
+              </Button>
+            </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
       <div className="w-full max-w-md bg-white shadow-lg rounded-lg p-8 border-t-4 border-green-600">
-        <div className="flex justify-center mb-6">
-          <img src="/jea-logo.png" alt={language === 'ar' ? 'شعار نقابة المهندسين الأردنيين' : 'Jordan Engineers Association Logo'} className="h-20" />
-        </div>
+      <div className="flex justify-center mb-6">
+        <img src="/JEA2.png" alt={language === 'ar' ? 'شعار نقابة المهندسين الأردنيين' : 'Jordan Engineers Association Logo'} className="h-20" />
+      </div>
         <h1 className="text-3xl font-bold text-center text-green-800 mb-6">
           {language === 'ar' ? 'تسجيل الدخول للاختبار' : 'Exam Login'}
         </h1>
@@ -134,14 +144,14 @@ export default function Home() {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder={language === 'ar' ? 'أدخل اسمك' : 'Enter your name'}
-          className="mb-4"
+          className={`mb-4 ${language === 'ar' ? 'text-right' : 'text-left'}`}
         />
         <Input
           type="text"
           value={idNumber}
           onChange={(e) => setIdNumber(e.target.value)}
           placeholder={language === 'ar' ? 'أدخل رقم الهوية' : 'Enter ID number'}
-          className="mb-4"
+          className={`mb-4 ${language === 'ar' ? 'text-right' : 'text-left'}`}
           maxLength="10"
         />
         <Input
@@ -149,12 +159,12 @@ export default function Home() {
           value={phoneNumber}
           onChange={(e) => setPhoneNumber(e.target.value)}
           placeholder={language === 'ar' ? 'أدخل رقم الهاتف' : 'Enter phone number'}
-          className="mb-6"
+          className={`mb-6 ${language === 'ar' ? 'text-right' : 'text-left'}`}
           maxLength="10"
         />
         <Button
           onClick={handleClick}
-          className="w-full"
+          className="w-full bg-green-500 hover:bg-green-600 text-white"
           disabled={isLoading}
         >
           {isLoading ? (language === 'ar' ? 'جاري التحميل...' : 'Loading...') : (language === 'ar' ? 'بدء الاختبار' : 'Start Exam')}
