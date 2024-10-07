@@ -1,5 +1,3 @@
-// File: AdminPage.js
-
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/utils/supabase';
@@ -28,8 +26,9 @@ export default function AdminPage() {
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [resultToDelete, setResultToDelete] = useState(null);
   const [deleteConfirmationEmail, setDeleteConfirmationEmail] = useState('');
+  const [showLeaveConfirmation, setShowLeaveConfirmation] = useState(false);
   const router = useRouter();
-  const reviewSectionRef = useRef(null);;
+  const reviewSectionRef = useRef(null);
 
   useEffect(() => {
     const savedLanguage = localStorage.getItem('language');
@@ -47,6 +46,17 @@ export default function AdminPage() {
     };
 
     checkAdminAccess();
+
+    const handleBeforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
   }, [router]);
 
   const toggleLanguage = () => {
@@ -169,13 +179,26 @@ export default function AdminPage() {
   };
 
   const handleLogout = () => {
+    window.removeEventListener('beforeunload', () => {});
     localStorage.removeItem('adminEmail');
     router.push('/');
   };
 
+  const handleLeavePage = () => {
+    setShowLeaveConfirmation(true);
+  };
+
+  const confirmLeavePage = () => {
+    handleLogout();
+  };
+
+  const cancelLeavePage = () => {
+    setShowLeaveConfirmation(false);
+  };
+
   const renderAnswerReview = () => {
     if (!selectedResult) return null;
-
+  
     return (
       <div ref={reviewSectionRef} className={`mt-8 bg-white p-6 rounded-lg shadow-lg w-full max-w-6xl border-t-4 border-green-600 ${language === 'ar' ? 'text-right' : 'text-left'} ${language === 'ar' ? 'rtl' : 'ltr'}`}>
         <h3 className="text-2xl font-semibold mb-4 text-green-800">
@@ -189,18 +212,26 @@ export default function AdminPage() {
             {section.questions.map((question, questionIndex) => {
               const userAnswer = selectedResult.answers[`${sectionIndex}-${questionIndex}`];
               let isCorrect = false;
-
+              let correctAnswerDisplay = '';
+              let pointsEarned = 0;
+  
               if (question.question_type === 'multiple') {
                 isCorrect = question.correct_answers && question.correct_answers.includes(userAnswer);
+                correctAnswerDisplay = question.correct_answers ? question.correct_answers.join(', ') : '';
+                pointsEarned = isCorrect ? question.points : 0;
               } else if (question.question_type === 'truefalse') {
                 isCorrect = userAnswer !== undefined && question.correct_answers && question.correct_answers.includes(userAnswer.toString());
+                correctAnswerDisplay = question.correct_answers ? (question.correct_answers[0] === 'true' ? (language === 'ar' ? 'صحيح' : 'True') : (language === 'ar' ? 'خطأ' : 'False')) : '';
+                pointsEarned = isCorrect ? question.points : 0;
               } else if (question.question_type === 'written') {
-                const lowerCaseAnswer = typeof userAnswer === 'string' ? userAnswer.toLowerCase().trim() : '';
-                isCorrect = question.accepted_answers && question.accepted_answers.some((answer) => 
-                  typeof answer === 'string' && lowerCaseAnswer.includes(answer.toLowerCase())
-                );
+                if (Array.isArray(userAnswer) && Array.isArray(question.correct_answers)) {
+                  const correctAnswers = userAnswer.filter(answer => question.correct_answers.includes(answer));
+                  pointsEarned = correctAnswers.length;
+                  isCorrect = correctAnswers.length === question.correct_answers.length;
+                }
+                correctAnswerDisplay = question.correct_answers ? question.correct_answers.join(', ') : '';
               }
-
+  
               return (
                 <div key={questionIndex} className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
                   <p className="font-medium text-gray-700">{question.question_text}</p>
@@ -208,22 +239,33 @@ export default function AdminPage() {
                     {language === 'ar' ? 'إجابة المستخدم: ' : 'User Answer: '}
                     {userAnswer !== undefined ? (
                       question.question_type === 'truefalse' ? 
-                        (userAnswer === 'true' ? 'صحيح' : 'خطأ') : 
-                        userAnswer.toString()
+                        (userAnswer === 'true' ? (language === 'ar' ? 'صحيح' : 'True') : (language === 'ar' ? 'خطأ' : 'False')) : 
+                        (Array.isArray(userAnswer) ? userAnswer.join(', ') : userAnswer.toString())
                     ) : (
                       language === 'ar' ? 'لم تتم الإجابة' : 'Not answered'
                     )}
                   </p>
-                  {question.question_type !== 'written' && question.correct_answers && (
-                    <p className="mt-1">
-                      {language === 'ar' ? 'الإجابة الصحيحة: ' : 'Correct Answer: '}
-                      {question.question_type === 'truefalse' ? 
-                        (question.correct_answers[0] === 'true' ? 'صحيح' : 'خطأ') : 
-                        question.correct_answers.join(', ')}
-                    </p>
+                  <p className="mt-1">
+                    {language === 'ar' ? 'الإجابة الصحيحة: ' : 'Correct Answer: '}
+                    {correctAnswerDisplay}
+                  </p>
+                  {question.question_type === 'written' && Array.isArray(userAnswer) && Array.isArray(question.correct_answers) && (
+                    <div className="mt-1">
+                      {userAnswer.map((answer, index) => (
+                        <p key={index} className={question.correct_answers.includes(answer) ? 'text-green-600' : 'text-red-600'}>
+                          {language === 'ar' ? `الخيار ${index + 1}: ` : `Option ${index + 1}: `}
+                          {question.correct_answers.includes(answer) ? 
+                            (language === 'ar' ? 'صحيح' : 'Correct') : 
+                            (language === 'ar' ? 'خاطئ' : 'Incorrect')}
+                        </p>
+                      ))}
+                    </div>
                   )}
                   <p className={`mt-1 font-semibold ${isCorrect ? 'text-green-600' : 'text-red-600'}`}>
                     {isCorrect ? (language === 'ar' ? 'صحيح' : 'Correct') : (language === 'ar' ? 'خاطئ' : 'Incorrect')}
+                  </p>
+                  <p className="mt-1">
+                    {language === 'ar' ? `النقاط المكتسبة: ${pointsEarned} من ${question.points}` : `Points earned: ${pointsEarned} out of ${question.points}`}
                   </p>
                 </div>
               );
@@ -242,14 +284,14 @@ export default function AdminPage() {
       </div>
     );
   };
-
+  
   if (language === 'ar') {
     return (
       <div className="min-h-screen p-8 bg-gradient-to-r from-green-50 to-blue-50 rtl">
         <div className="max-w-6xl mx-auto">
           <div className="flex justify-between items-center mb-8">
             <div className="flex items-center space-x-4">
-              <Button onClick={handleLogout} className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-all">
+              <Button onClick={handleLeavePage} className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-all">
                 تسجيل الخروج
               </Button>
               <div className="flex items-center space-x-2">
@@ -275,7 +317,7 @@ export default function AdminPage() {
                   className="w-64"
                 />
               </div>
-              <h2 className="text-2xl font-semibold text-green-700">نتائج الاختبار</h2>
+              <h2 className="text-2xl font-semibol text-green-700">نتائج الاختبار</h2>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full bg-white border border-gray-300">
@@ -299,9 +341,9 @@ export default function AdminPage() {
                           </Button>
                           <Button
                             onClick={() => handleDeleteClick(result)}
-                            className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 transition-all"
+                            className="bg-white text-red-500 p-1 rounded hover:bg-red-100 transition-all"
                           >
-                            حذف
+                            <Trash2 size={20} />
                           </Button>
                         </div>
                       </td>
@@ -339,6 +381,20 @@ export default function AdminPage() {
             </div>
           </DialogContent>
         </Dialog>
+        <Dialog open={showLeaveConfirmation} onOpenChange={setShowLeaveConfirmation}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>تأكيد الخروج</DialogTitle>
+            </DialogHeader>
+            <div className="py-4">
+              <p>هل أنت متأكد أنك تريد تسجيل الخروج؟</p>
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button onClick={cancelLeavePage}>إلغاء</Button>
+              <Button onClick={confirmLeavePage} className="bg-red-500 text-white hover:bg-red-600">تأكيد</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
         <ToastContainer rtl position="top-right" />
       </div>
     );
@@ -349,7 +405,7 @@ export default function AdminPage() {
           <div className="flex justify-between items-center mb-8">
             <h1 className="text-3xl font-bold text-green-800">Admin Page</h1>
             <div className="flex items-center space-x-4">
-              <Button onClick={handleLogout} className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-all">
+              <Button onClick={handleLeavePage} className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-all">
                 Logout
               </Button>
               <div className="flex items-center space-x-2">
@@ -403,9 +459,9 @@ export default function AdminPage() {
                           </Button>
                           <Button
                             onClick={() => handleDeleteClick(result)}
-                            className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 transition-all"
+                            className="bg-white text-red-500 p-1 rounded hover:bg-red-100 transition-all"
                           >
-                            Delete
+                            <Trash2 size={20} />
                           </Button>
                         </div>
                       </td>
@@ -435,6 +491,20 @@ export default function AdminPage() {
             <div className="flex justify-end space-x-2">
               <Button onClick={() => setShowDeleteConfirmation(false)}>Cancel</Button>
               <Button onClick={handleDeleteConfirm} className="bg-red-500 text-white hover:bg-red-600">Delete</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={showLeaveConfirmation} onOpenChange={setShowLeaveConfirmation}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Confirm Logout</DialogTitle>
+            </DialogHeader>
+            <div className="py-4">
+              <p>Are you sure you want to log out?</p>
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button onClick={cancelLeavePage}>Cancel</Button>
+              <Button onClick={confirmLeavePage} className="bg-red-500 text-white hover:bg-red-600">Confirm</Button>
             </div>
           </DialogContent>
         </Dialog>

@@ -18,10 +18,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 
-
 export default function Home() {
-
-  
   const [name, setName] = useState('');
   const [idNumber, setIdNumber] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -35,6 +32,13 @@ export default function Home() {
     if (savedLanguage) {
       setLanguage(savedLanguage);
     }
+
+    // Clear all localStorage items except 'language'
+    Object.keys(localStorage).forEach((key) => {
+      if (key !== 'language') {
+        localStorage.removeItem(key);
+      }
+    });
   }, []);
 
   const toggleLanguage = () => {

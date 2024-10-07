@@ -1,18 +1,19 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { supabase } from '@/utils/supabase';
 import { useRouter } from 'next/navigation';
 import { ToastContainer, toast } from 'react-toastify';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { fetchExamQuestions, submitExam } from '@/app/actions';
 import Image from 'next/image';
 import 'react-toastify/dist/ReactToastify.css';
-import 'tailwindcss/tailwind.css';
 
 export default function ExamPage() {
   const [answers, setAnswers] = useState({});
-  const [score, setScore] = useState(0);
   const [userName, setUserName] = useState('');
   const [userId, setUserId] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -54,7 +55,7 @@ export default function ExamPage() {
         setIsResetDialogOpen(true);
       }
       
-      fetchExamQuestions();
+      fetchExamQuestionsData();
     }
 
     const timer = setInterval(() => {
@@ -70,73 +71,30 @@ export default function ExamPage() {
       });
     }, 1000);
 
-    const handleBeforeUnload = (e) => {
-      if (!refreshAttempted.current) {
-        e.preventDefault();
-        e.returnValue = '';
-        setIsRefreshDialogOpen(true);
-        refreshAttempted.current = true;
-      }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
-    const handlePopState = (e) => {
-      e.preventDefault();
-      setIsLeaveDialogOpen(true);
-    };
-
-    window.addEventListener('popstate', handlePopState);
-
     return () => {
       clearInterval(timer);
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      window.removeEventListener('popstate', handlePopState);
     };
   }, [router]);
 
-  const fetchExamQuestions = async () => {
+  const fetchExamQuestionsData = async () => {
     try {
-      const { data, error } = await supabase
-        .from('exam_questions')
-        .select('*')
-        .order('id', { ascending: true });
-
-      if (error) throw error;
-
-      const groupedQuestions = data.reduce((acc, question) => {
-        if (!acc[question.section_name]) {
-          acc[question.section_name] = [];
-        }
-        acc[question.section_name].push(question);
-        return acc;
-      }, {});
-
-      const formattedSections = Object.entries(groupedQuestions).map(([name, questions]) => ({
-        name,
-        questions: questions.map(q => ({
-          id: q.id,
-          type: q.question_type,
-          question: q.question_text,
-          options: q.options ? (typeof q.options === 'string' ? JSON.parse(q.options) : q.options) : [],
-          correctAnswers: q.correct_answers,
-          points: q.points || 1
-        }))
-      }));
-
-      setExamSections(formattedSections);
-      
-      const allOptions = formattedSections.map(section => 
-        section.questions
-          .filter(q => q.type === 'written')
-          .flatMap(q => q.options)
-      );
-      setAllDragDropOptions(allOptions);
-      
-      setLoading(false);
+      const result = await fetchExamQuestions();
+      if (result.success) {
+        setExamSections(result.examSections);
+        
+        const allOptions = result.examSections.map(section => 
+          section.questions
+            .filter(q => q.type === 'written')
+            .flatMap(q => q.options)
+        );
+        setAllDragDropOptions(allOptions);
+      } else {
+        throw new Error(result.error);
+      }
     } catch (error) {
       console.error('Error fetching exam questions:', error.message);
       toast.error(language === 'ar' ? `خطأ في جلب أسئلة الاختبار: ${error.message}` : `Error fetching exam questions: ${error.message}`);
+    } finally {
       setLoading(false);
     }
   };
@@ -175,10 +133,7 @@ export default function ExamPage() {
         setAllDragDropOptions(updatedAllOptions);
       }
     } else {
-      const currentAnswer = answers[`${targetSectionIndex}-${targetQuestionIndex}`] || [];
-      if (!currentAnswer.includes(draggedOption)) {
-        handleAnswerChange(targetSectionIndex, targetQuestionIndex, [...currentAnswer, draggedOption], 'written');
-      }
+      handleAnswerChange(targetSectionIndex, targetQuestionIndex, draggedOption, 'written');
     }
 
     dragItem.current = null;
@@ -190,62 +145,25 @@ export default function ExamPage() {
 
   const confirmSubmit = async () => {
     setIsSubmitDialogOpen(false);
-    
-    let totalScore = 0;
-    let allAnswered = true;
 
-    examSections.forEach((section, sectionIndex) => {
-      section.questions.forEach((question, questionIndex) => {
-        const userAnswer = answers[`${sectionIndex}-${questionIndex}`];
-
-        if (userAnswer === undefined) {
-          allAnswered = false;
-        }
-
-        if (question.type === 'multiple') {
-          if (question.correctAnswers && question.correctAnswers.includes(userAnswer)) {
-            totalScore += question.points;
-          }
-        } else if (question.type === 'truefalse') {
-          if (userAnswer !== undefined && question.correctAnswers && question.correctAnswers.includes(userAnswer.toString())) {
-            totalScore += question.points;
-          }
-        } else if (question.type === 'written') {
-          if (Array.isArray(userAnswer) && question.correctAnswers) {
-            const isCorrect = question.correctAnswers.every(correctAnswer => 
-              userAnswer.includes(correctAnswer)
-            );
-            if (isCorrect) {
-              totalScore += question.points;
-            }
-          }
-        }
-      });
-    });
-
-    if (!allAnswered && timeLeft > 0) {
-      toast.error(language === 'ar' ? 'يجب الإجابة على جميع الأسئلة قبل تسليم الاختبار' : 'Please answer all questions before submitting the exam');
-      return;
-    }
-
-    setScore(totalScore);
-    setExamSubmitted(true);
+    const formData = new FormData();
+    formData.append('userName', userName);
+    formData.append('userId', userId);
+    formData.append('phoneNumber', phoneNumber);
+    formData.append('answers', JSON.stringify(answers));
 
     try {
-      const { error } = await supabase.from('exam_results').insert({
-        user_name: userName,
-        id_number: userId,
-        phone_number: phoneNumber,
-        score: totalScore,
-        answers: answers,
-        created_at: new Date(),
-      });
-      if (error) throw error;
-      toast.success(language === 'ar' ? 'تم تسليم الاختبار بنجاح' : 'Exam submitted successfully');
-      
-      localStorage.removeItem('answers');
-      localStorage.removeItem('timeLeft');
-      localStorage.removeItem('examStarted');
+      const result = await submitExam(formData);
+      if (result.success) {
+        setExamSubmitted(true);
+        toast.success(language === 'ar' ? 'تم تسليم الاختبار بنجاح' : 'Exam submitted successfully');
+        
+        localStorage.removeItem('answers');
+        localStorage.removeItem('timeLeft');
+        localStorage.removeItem('examStarted');
+      } else {
+        throw new Error(result.error);
+      }
     } catch (error) {
       console.error('Error submitting exam:', error.message);
       toast.error(language === 'ar' ? `خطأ في تسليم الاختبار: ${error.message}` : `Error submitting exam: ${error.message}`);
@@ -253,12 +171,21 @@ export default function ExamPage() {
   };
 
   const handleAnswerChange = (sectionIndex, questionIndex, answer, questionType) => {
-    const newAnswers = {
-      ...answers,
-      [`${sectionIndex}-${questionIndex}`]: questionType === 'multiple' 
-        ? answer.toString()
-        : answer,
-    };
+    const newAnswers = { ...answers };
+    if (questionType === 'written') {
+      const currentAnswer = newAnswers[`${sectionIndex}-${questionIndex}`] || [];
+      if (Array.isArray(answer)) {
+        newAnswers[`${sectionIndex}-${questionIndex}`] = answer;
+      } else {
+        if (currentAnswer.includes(answer)) {
+          newAnswers[`${sectionIndex}-${questionIndex}`] = currentAnswer.filter(a => a !== answer);
+        } else if (currentAnswer.length < 2) {
+          newAnswers[`${sectionIndex}-${questionIndex}`] = [...currentAnswer, answer];
+        }
+      }
+    } else {
+      newAnswers[`${sectionIndex}-${questionIndex}`] = answer;
+    }
     setAnswers(newAnswers);
     localStorage.setItem('answers', JSON.stringify(newAnswers));
     localStorage.setItem('examStarted', 'true');
@@ -300,7 +227,7 @@ export default function ExamPage() {
 
   if (loading) {
     return (
-      <div className={`min-h-screen flex items-center justify-center bg-gradient-to-r from-green-50 to-blue-50 ${language === 'ar' ? 'rtl' : 'ltr'}`}>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-r from-green-50 to-blue-50">
         <p className="text-xl font-semibold text-green-800">
           {language === 'ar' ? 'جاري تحميل أسئلة الاختبار...' : 'Loading exam questions...'}
         </p>
@@ -310,16 +237,16 @@ export default function ExamPage() {
 
   if (examSubmitted) {
     return (
-      <div className={`min-h-screen bg-gradient-to-r from-green-50 to-blue-50 flex items-center justify-center p-4 ${language === 'ar' ? 'rtl' : 'ltr'}`}>
-        <div className="bg-white shadow-lg rounded-lg p-8 text-right max-w-md w-full border-t-4 border-green-600">
-          <h1 className="text-3xl font-bold text-center text-green-800 mb-6">
+      <div className="min-h-screen bg-gradient-to-r from-green-50 to-blue-50 flex items-center justify-center p-4" style={{direction: 'rtl'}}>
+        <div className="bg-white shadow-lg rounded-lg p-8 text-center max-w-md w-full border-t-4 border-green-600">
+          <h1 className="text-3xl font-bold text-green-800 mb-6">
             {language === 'ar' ? 'تم إكمال الاختبار' : 'Exam Completed'}
           </h1>
-          <p className={`text-xl text-center mb-4 ${language === 'ar' ? 'rtl' : 'ltr'}`}>
+          <p className="text-xl mb-4">
             {language === 'ar' ? `شكراً لك، ${userName}!` : `Thank you, ${userName}!`}
           </p>
-          <button
-            className="w-full py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all"
+          <Button
+            className="w-full"
             onClick={() => {
               localStorage.removeItem('userName');
               localStorage.removeItem('userId');
@@ -328,15 +255,15 @@ export default function ExamPage() {
             }}
           >
             {language === 'ar' ? 'العودة إلى الصفحة الرئيسية' : 'Return to Home Page'}
-          </button>
+          </Button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className={`min-h-screen bg-gradient-to-r from-green-50 to-blue-50 p-8 `}>
-      <div className="max-w-4xl mx-auto bg-white shadow-lg rounded-lg p-8 text-right border-t-4 border-green-600">
+    <div className="min-h-screen bg-gradient-to-r from-green-50 to-blue-50 p-8" style={{direction: 'rtl'}}>
+      <div className="max-w-4xl mx-auto bg-white shadow-lg rounded-lg p-8 border-t-4 border-green-600">
         <h1 className="text-3xl font-bold text-center text-green-800 mb-6">
           {language === 'ar' ? 'الاختبار' : 'Exam'}
         </h1>
@@ -350,8 +277,10 @@ export default function ExamPage() {
         </div>
 
         <div className="mb-6 p-4 bg-yellow-100 rounded-lg">
-          <h2 className={`text-lg font-semibold mb-2 ${language === 'ar' ? 'text-right' : 'text-left'}`}>{language === 'ar' ? 'تعليمات:' : 'Instructions:'}</h2>
-          <ul className={`list-none list-inside ${language === 'ar' ? 'text-right' : 'text-left'}`}>
+          <h2 className="text-lg font-semibold mb-2">
+            {language === 'ar' ? 'تعليمات:' : 'Instructions:'}
+          </h2>
+          <ul className="list-disc list-inside">
             <li>{language === 'ar' ? 'لديك 60 دقيقة لإكمال الاختبار' : 'You have 60 minutes to complete the exam.'}</li>
             <li>{language === 'ar' ? 'يجب الإجابة على جميع الأسئلة قبل التسليم' : 'All questions must be answered before submission.'}</li>
             <li>{language === 'ar' ? 'للأسئلة المكتوبة، اسحب الإجابات وأفلتها في المربع المخصص' : 'For written questions, drag and drop answers into the designated box.'}</li>
@@ -359,7 +288,7 @@ export default function ExamPage() {
           </ul>
         </div>
 
-        <div className="space-y-8 ">
+        <div className="space-y-8">
           {examSections.map((section, sectionIndex) => (
             <div key={sectionIndex} className="border border-gray-300 p-6 rounded-lg shadow-sm bg-gray-50">
               <h2 className="text-xl font-semibold text-green-700 mb-4">
@@ -391,63 +320,54 @@ export default function ExamPage() {
                     {question.question}
                   </p>
                   {question.type === 'multiple' && (
-                    <div className="space-y-2">
+                    <RadioGroup
+                      onValueChange={(value) => handleAnswerChange(sectionIndex, questionIndex, value, 'multiple')}
+                      value={answers[`${sectionIndex}-${questionIndex}`]}
+                      className="space-y-2"
+                    >
                       {question.options.map((option, optionIndex) => (
-                        <div key={optionIndex} className={`flex items-center flex-row-reverse`}>
-                          <input
-                            type="radio"
-                            id={`${sectionIndex}-${questionIndex}-${optionIndex}`}
-                            name={`${sectionIndex}-${questionIndex}`}
-                            checked={answers[`${sectionIndex}-${questionIndex}`] === (option.text || option)}
-                            onChange={() => handleAnswerChange(sectionIndex, questionIndex, option.text || option, 'multiple')}
-                            className='ml-2'
-                          />
-                          <label htmlFor={`${sectionIndex}-${questionIndex}-${optionIndex}`} className="text-gray-600 flex items-center">
-                            {option.image && (
-                              <Image 
-                                src={`/images/option${optionIndex + 1}.png`} 
-                                alt={`Option ${optionIndex + 1}`}
-                                width={300} 
-                                height={300} 
-                                className="object-cover mr-2" 
-                              />
-                            )}
+                        <div key={optionIndex} className="flex items-center justify-end space-x-2">
+                          {sectionIndex === 0 && questionIndex === 2 && option.image && (
+                            <Image
+                              src={`/images/option${optionIndex + 1}.png`}
+                              alt={`Option ${optionIndex + 1}`}
+                              width={100}
+                              height={100}
+                              className="ml-2 order-1"
+                            />
+                          )}
+                          <Label htmlFor={`${sectionIndex}-${questionIndex}-${optionIndex}`} className="mr-2 order-2">
                             {option.text || option}
-                          </label>
+                          </Label>
+                          <RadioGroupItem 
+                            value={option.text || option} 
+                            id={`${sectionIndex}-${questionIndex}-${optionIndex}`}
+                            className="order-3"
+                          />
                         </div>
                       ))}
-                    </div>
+                    </RadioGroup>
                   )}
 
                   {question.type === 'truefalse' && (
-                    <div className="space-y-2">
-                      <div className={`flex items-center flex-row-reverse`}>
-                        <input
-                          type="radio"
-                          id={`${sectionIndex}-${questionIndex}-true`}
-                          name={`${sectionIndex}-${questionIndex}`}
-                          checked={answers[`${sectionIndex}-${questionIndex}`] === 'true'}
-                          onChange={() => handleAnswerChange(sectionIndex, questionIndex, 'true', 'truefalse')}
-                          className='ml-2'
-                        />
-                        <label htmlFor={`${sectionIndex}-${questionIndex}-true`} className="text-gray-600">
+                    <RadioGroup
+                      onValueChange={(value) => handleAnswerChange(sectionIndex, questionIndex, value, 'truefalse')}
+                      value={answers[`${sectionIndex}-${questionIndex}`]}
+                      className="space-y-2"
+                    >
+                      <div className="flex items-center justify-end space-x-2">
+                        <Label htmlFor={`${sectionIndex}-${questionIndex}-true`} className="mr-2 order-1">
                           {language === 'ar' ? 'صح' : 'True'}
-                        </label>
+                        </Label>
+                        <RadioGroupItem value="true" id={`${sectionIndex}-${questionIndex}-true`} className="order-2" />
                       </div>
-                      <div className={`flex items-center flex-row-reverse`}>
-                        <input
-                          type="radio"
-                          id={`${sectionIndex}-${questionIndex}-false`}
-                          name={`${sectionIndex}-${questionIndex}`}
-                          checked={answers[`${sectionIndex}-${questionIndex}`] === 'false'}
-                          onChange={() => handleAnswerChange(sectionIndex, questionIndex, 'false', 'truefalse')}
-                          className='ml-2'
-                        />
-                        <label htmlFor={`${sectionIndex}-${questionIndex}-false`} className="text-gray-600">
+                      <div className="flex items-center justify-end space-x-2">
+                        <Label htmlFor={`${sectionIndex}-${questionIndex}-false`} className="mr-2 order-1">
                           {language === 'ar' ? 'خطأ' : 'False'}
-                        </label>
+                        </Label>
+                        <RadioGroupItem value="false" id={`${sectionIndex}-${questionIndex}-false`} className="order-2" />
                       </div>
-                    </div>
+                    </RadioGroup>
                   )}
 
                   {question.type === 'written' && (
@@ -473,12 +393,12 @@ export default function ExamPage() {
             </div>
           ))}
         </div>
-        <button
-          className="w-full py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all mt-8"
+        <Button
+          className="w-full mt-8"
           onClick={handleSubmit}
         >
           {language === 'ar' ? 'تسليم الاختبار' : 'Submit Exam'}
-        </button>
+        </Button>
         <ToastContainer rtl={language === 'ar'} position="top-right" />
 
         <Dialog open={isSubmitDialogOpen} onOpenChange={setIsSubmitDialogOpen}>
@@ -523,7 +443,28 @@ export default function ExamPage() {
           </DialogContent>
         </Dialog>
 
-        {/* <Dialog open={isRefreshDialogOpen} onOpenChange={setIsRefreshDialogOpen}>
+        <Dialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{language === 'ar' ? 'إعادة تعيين الاختبار' : 'Reset Exam'}</DialogTitle>
+            </DialogHeader>
+            <p>
+              {language === 'ar'
+                ? 'هل تريد إعادة تعيين الاختبار أم الاستمرار من حيث توقفت؟'
+                : 'Do you want to reset the exam or continue where you left off?'}
+            </p>
+            <DialogFooter>
+              <Button onClick={resetExam} variant="outline">
+                {language === 'ar' ? 'إعادة تعيين' : 'Reset'}
+              </Button>
+              <Button onClick={continueExam} className="bg-green-500 hover:bg-green-600 text-white">
+                {language === 'ar' ? 'استمرار' : 'Continue'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={isRefreshDialogOpen} onOpenChange={setIsRefreshDialogOpen}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>{language === 'ar' ? 'تحذير' : 'Warning'}</DialogTitle>
@@ -542,7 +483,7 @@ export default function ExamPage() {
               </Button>
             </DialogFooter>
           </DialogContent>
-        </Dialog> */}
+        </Dialog>
       </div>
     </div>
   );
