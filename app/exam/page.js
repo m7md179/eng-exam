@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { fetchExamQuestions, submitExam } from '@/app/actions';
 import Image from 'next/image';
@@ -62,7 +63,7 @@ export default function ExamPage() {
       setTimeLeft((prevTime) => {
         if (prevTime <= 1) {
           clearInterval(timer);
-          handleSubmit();
+          handleTimeUp();
           return 0;
         }
         const newTime = prevTime - 1;
@@ -99,6 +100,7 @@ export default function ExamPage() {
     }
   };
 
+
   const onDragStart = (e, sectionIndex, questionIndex, optionIndex) => {
     dragItem.current = { sectionIndex, questionIndex, optionIndex };
     e.dataTransfer.effectAllowed = "move";
@@ -133,7 +135,10 @@ export default function ExamPage() {
         setAllDragDropOptions(updatedAllOptions);
       }
     } else {
-      handleAnswerChange(targetSectionIndex, targetQuestionIndex, draggedOption, 'written');
+      const currentAnswer = answers[`${targetSectionIndex}-${targetQuestionIndex}`] || [];
+      if (currentAnswer.length < 2) {
+        handleAnswerChange(targetSectionIndex, targetQuestionIndex, [...currentAnswer, draggedOption], 'written');
+      }
     }
 
     dragItem.current = null;
@@ -143,6 +148,12 @@ export default function ExamPage() {
     setIsSubmitDialogOpen(true);
   };
 
+  const handleTimeUp = () => {
+    toast.warning(language === 'ar' ? 'انتهى الوقت! سيتم تسليم الاختبار تلقائياً.' : 'Time\'s up! The exam will be submitted automatically.');
+    confirmSubmit();
+  };
+
+  
   const confirmSubmit = async () => {
     setIsSubmitDialogOpen(false);
 
@@ -156,6 +167,8 @@ export default function ExamPage() {
       const result = await submitExam(formData);
       if (result.success) {
         setExamSubmitted(true);
+        setScore(result.score);
+        setMaxScore(result.maxScore);
         toast.success(language === 'ar' ? 'تم تسليم الاختبار بنجاح' : 'Exam submitted successfully');
         
         localStorage.removeItem('answers');
@@ -170,18 +183,19 @@ export default function ExamPage() {
     }
   };
 
+
+
   const handleAnswerChange = (sectionIndex, questionIndex, answer, questionType) => {
     const newAnswers = { ...answers };
     if (questionType === 'written') {
+      newAnswers[`${sectionIndex}-${questionIndex}`] = answer.slice(0, 2);
+    } else if (questionType === 'multiple' && questionIndex === 13) {
+      // Special handling for question 14 (multiple correct answers)
       const currentAnswer = newAnswers[`${sectionIndex}-${questionIndex}`] || [];
-      if (Array.isArray(answer)) {
-        newAnswers[`${sectionIndex}-${questionIndex}`] = answer;
+      if (currentAnswer.includes(answer)) {
+        newAnswers[`${sectionIndex}-${questionIndex}`] = currentAnswer.filter(a => a !== answer);
       } else {
-        if (currentAnswer.includes(answer)) {
-          newAnswers[`${sectionIndex}-${questionIndex}`] = currentAnswer.filter(a => a !== answer);
-        } else if (currentAnswer.length < 2) {
-          newAnswers[`${sectionIndex}-${questionIndex}`] = [...currentAnswer, answer];
-        }
+        newAnswers[`${sectionIndex}-${questionIndex}`] = [...currentAnswer, answer];
       }
     } else {
       newAnswers[`${sectionIndex}-${questionIndex}`] = answer;
@@ -237,7 +251,7 @@ export default function ExamPage() {
 
   if (examSubmitted) {
     return (
-      <div className="min-h-screen bg-gradient-to-r from-green-50 to-blue-50 flex items-center justify-center p-4" style={{direction: 'rtl'}}>
+      <div className="min-h-screen bg-gradient-to-r from-green-50 to-blue-50 flex items-center justify-center p-4" style={{direction: language === 'ar' ? 'rtl' : 'ltr'}}>
         <div className="bg-white shadow-lg rounded-lg p-8 text-center max-w-md w-full border-t-4 border-green-600">
           <h1 className="text-3xl font-bold text-green-800 mb-6">
             {language === 'ar' ? 'تم إكمال الاختبار' : 'Exam Completed'}
@@ -261,8 +275,10 @@ export default function ExamPage() {
     );
   }
 
+
+
   return (
-    <div className="min-h-screen bg-gradient-to-r from-green-50 to-blue-50 p-8" style={{direction: 'rtl'}}>
+    <div className="min-h-screen bg-gradient-to-r from-green-50 to-blue-50 p-8" style={{direction: language === 'ar' ? 'rtl' : 'ltr'}}>
       <div className="max-w-4xl mx-auto bg-white shadow-lg rounded-lg p-8 border-t-4 border-green-600">
         <h1 className="text-3xl font-bold text-center text-green-800 mb-6">
           {language === 'ar' ? 'الاختبار' : 'Exam'}
@@ -298,6 +314,7 @@ export default function ExamPage() {
               {section.questions.some(q => q.type === 'written') && (
                 <div 
                   className="flex flex-wrap gap-2 mb-4 p-4 bg-gray-100 rounded-lg"
+                  
                   onDragOver={onDragOver}
                   onDrop={(e) => onDrop(e, sectionIndex, -1)}
                 >
@@ -319,7 +336,7 @@ export default function ExamPage() {
                   <p className="font-medium text-gray-700 mb-2">
                     {question.question}
                   </p>
-                  {question.type === 'multiple' && (
+                  {question.type === 'multiple' && questionIndex !== 13 && (
                     <RadioGroup
                       onValueChange={(value) => handleAnswerChange(sectionIndex, questionIndex, value, 'multiple')}
                       value={answers[`${sectionIndex}-${questionIndex}`]}
@@ -327,26 +344,46 @@ export default function ExamPage() {
                     >
                       {question.options.map((option, optionIndex) => (
                         <div key={optionIndex} className="flex items-center justify-end space-x-2">
+                          <RadioGroupItem 
+                            value={option.text || option} 
+                            id={`${sectionIndex}-${questionIndex}-${optionIndex}`}
+                            className={language === 'ar' ? "order-3" : "order-1"}
+                          />
+                          <Label htmlFor={`${sectionIndex}-${questionIndex}-${optionIndex}`} className="order-2 mx-2">
+                            {sectionIndex === 0 && questionIndex === 2 ? '' : (option.text || option)}
+                          </Label>
                           {sectionIndex === 0 && questionIndex === 2 && option.image && (
                             <Image
                               src={`/images/option${optionIndex + 1}.png`}
                               alt={`Option ${optionIndex + 1}`}
                               width={100}
                               height={100}
-                              className="ml-2 order-1"
+                              className={language === 'ar' ? "order-1" : "order-3"}
                             />
                           )}
-                          <Label htmlFor={`${sectionIndex}-${questionIndex}-${optionIndex}`} className="mr-2 order-2">
-                            {option.text || option}
-                          </Label>
-                          <RadioGroupItem 
-                            value={option.text || option} 
-                            id={`${sectionIndex}-${questionIndex}-${optionIndex}`}
-                            className="order-3"
-                          />
                         </div>
                       ))}
                     </RadioGroup>
+                  )}
+
+                  {question.type === 'multiple' && questionIndex === 13 && (
+                    <div className="space-y-2">
+                      {question.options.map((option, optionIndex) => (
+                        <div key={optionIndex} className="flex items-center justify-end space-x-2">
+                          <Checkbox
+                            id={`${sectionIndex}-${questionIndex}-${optionIndex}`}
+                            checked={(answers[`${sectionIndex}-${questionIndex}`] || []).includes(option.text || option)}
+                            onCheckedChange={(checked) => {
+                              handleAnswerChange(sectionIndex, questionIndex, option.text || option, 'multiple');
+                            }}
+                            className={language === 'ar' ? "order-3" : "order-1"}
+                          />
+                          <Label htmlFor={`${sectionIndex}-${questionIndex}-${optionIndex}`} className="order-2 mx-2">
+                            {option.text || option}
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
                   )}
 
                   {question.type === 'truefalse' && (
@@ -356,16 +393,24 @@ export default function ExamPage() {
                       className="space-y-2"
                     >
                       <div className="flex items-center justify-end space-x-2">
-                        <Label htmlFor={`${sectionIndex}-${questionIndex}-true`} className="mr-2 order-1">
+                        <RadioGroupItem 
+                          value="true" 
+                          id={`${sectionIndex}-${questionIndex}-true`} 
+                          className={language === 'ar' ? "order-3" : "order-1"}
+                        />
+                        <Label htmlFor={`${sectionIndex}-${questionIndex}-true`} className="order-2 mx-2">
                           {language === 'ar' ? 'صح' : 'True'}
                         </Label>
-                        <RadioGroupItem value="true" id={`${sectionIndex}-${questionIndex}-true`} className="order-2" />
                       </div>
                       <div className="flex items-center justify-end space-x-2">
-                        <Label htmlFor={`${sectionIndex}-${questionIndex}-false`} className="mr-2 order-1">
+                        <RadioGroupItem 
+                          value="false" 
+                          id={`${sectionIndex}-${questionIndex}-false`} 
+                          className={language === 'ar' ? "order-3" : "order-1"}
+                        />
+                        <Label htmlFor={`${sectionIndex}-${questionIndex}-false`} className="order-2 mx-2">
                           {language === 'ar' ? 'خطأ' : 'False'}
                         </Label>
-                        <RadioGroupItem value="false" id={`${sectionIndex}-${questionIndex}-false`} className="order-2" />
                       </div>
                     </RadioGroup>
                   )}

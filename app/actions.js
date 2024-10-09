@@ -1,14 +1,12 @@
 'use server'
-
 import { supabase } from '../utils/supabase';
 
 export async function fetchExamQuestions() {
   try {
     const { data, error } = await supabase
       .from('exam_questions')
-      .select('id, section_name, question_type, question_text, options')
+      .select('id, section_name, question_type, question_text, options, correct_answers, points')
       .order('id', { ascending: true });
-
     if (error) throw error;
 
     const groupedQuestions = data.reduce((acc, question) => {
@@ -20,6 +18,7 @@ export async function fetchExamQuestions() {
         type: question.question_type,
         question: question.question_text,
         options: question.options ? (typeof question.options === 'string' ? JSON.parse(question.options) : question.options) : [],
+        points: question.points,
       });
       return acc;
     }, {});
@@ -32,9 +31,9 @@ export async function fetchExamQuestions() {
 }
 
 export async function submitExam(formData) {
-  const userName = formData.get('userName') ;
+  const userName = formData.get('userName');
   const userId = formData.get('userId');
-  const phoneNumber = formData.get('phoneNumber') ;
+  const phoneNumber = formData.get('phoneNumber');
   const answers = JSON.parse(formData.get('answers'));
 
   try {
@@ -43,25 +42,44 @@ export async function submitExam(formData) {
       .from('exam_questions')
       .select('*')
       .order('id', { ascending: true });
-
     if (fetchError) throw fetchError;
-
+   
     let totalScore = 0;
+    let maxScore = 0;
+    const scoredAnswers = {};
 
     // Calculate the score
-    examQuestions.forEach((question) => {
-      const userAnswer = answers[`${question.section_name}-${question.id}`];
+    examQuestions.forEach((question, index) => {
+      const userAnswer = answers[`${Math.floor(index / 15)}-${index % 15}`];
+      const questionPoints = parseFloat(question.points) || 1;
+      maxScore += questionPoints;
+      let questionScore = 0;
 
-      if (question.question_type === 'multiple' || question.question_type === 'truefalse') {
+      if (question.id === 37) { // Special handling for question 14 (37 in db)
+        if (Array.isArray(userAnswer) && Array.isArray(question.correct_answers)) {
+          const correctAnswers = userAnswer.filter(answer => question.correct_answers.includes(answer));
+          const incorrectAnswers = userAnswer.filter(answer => !question.correct_answers.includes(answer));
+          questionScore = correctAnswers.length - incorrectAnswers.length;
+          questionScore = Math.max(0, Math.min(questionScore, 4)); // Ensure score is between 0 and 4
+        }
+      } else if (question.question_type === 'multiple' || question.question_type === 'truefalse') {
         if (question.correct_answers && question.correct_answers.includes(userAnswer)) {
-          totalScore += question.points || 1;
+          questionScore = questionPoints;
         }
       } else if (question.question_type === 'written') {
         if (Array.isArray(userAnswer) && Array.isArray(question.correct_answers)) {
           const correctCount = userAnswer.filter(answer => question.correct_answers.includes(answer)).length;
-          totalScore += correctCount;
+          questionScore = Math.min(correctCount, questionPoints);
         }
       }
+
+      totalScore += questionScore;
+      scoredAnswers[`${Math.floor(index / 15)}-${index % 15}`] = {
+        userAnswer,
+        correctAnswer: question.correct_answers,
+        score: questionScore,
+        maxScore: question.id === 37 ? 4 : questionPoints // Set maxScore to 4 for question 37
+      };
     });
 
     // Insert the exam result into the database
@@ -70,13 +88,13 @@ export async function submitExam(formData) {
       id_number: userId,
       phone_number: phoneNumber,
       score: totalScore,
-      answers: answers,
+      max_score: maxScore,
+      answers: scoredAnswers,
       created_at: new Date(),
     });
-
     if (insertError) throw insertError;
-
-    return { success: true, score: totalScore };
+   
+    return { success: true, score: totalScore, maxScore, scoredAnswers };
   } catch (error) {
     console.error('Error submitting exam:', error.message);
     return { success: false, error: error.message };
