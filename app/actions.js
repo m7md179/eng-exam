@@ -1,7 +1,10 @@
 'use server'
-import { supabase } from '../utils/supabase';
+
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
+import { cookies } from 'next/headers'
 
 export async function fetchExamQuestions() {
+  const supabase = createServerComponentClient({ cookies })
   try {
     const { data, error } = await supabase
       .from('exam_questions')
@@ -31,6 +34,7 @@ export async function fetchExamQuestions() {
 }
 
 export async function submitExam(formData) {
+  const supabase = createServerComponentClient({ cookies })
   const userName = formData.get('userName');
   const userId = formData.get('userId');
   const phoneNumber = formData.get('phoneNumber');
@@ -43,42 +47,61 @@ export async function submitExam(formData) {
       .select('*')
       .order('id', { ascending: true });
     if (fetchError) throw fetchError;
-   
+    
     let totalScore = 0;
     let maxScore = 0;
     const scoredAnswers = {};
 
     // Calculate the score
-    examQuestions.forEach((question, index) => {
-      const userAnswer = answers[`${Math.floor(index / 15)}-${index % 15}`];
-      const questionPoints = parseFloat(question.points) || 1;
+    examQuestions.forEach((question) => {
+      const userAnswer = answers[`${question.section_name}-${question.id}`];
+      let questionPoints = parseFloat(question.points) || 1; // Use let instead of const
       maxScore += questionPoints;
       let questionScore = 0;
-
-      if (question.id === 37) { // Special handling for question 14 (37 in db)
-        if (Array.isArray(userAnswer) && Array.isArray(question.correct_answers)) {
-          const correctAnswers = userAnswer.filter(answer => question.correct_answers.includes(answer));
-          const incorrectAnswers = userAnswer.filter(answer => !question.correct_answers.includes(answer));
-          questionScore = correctAnswers.length - incorrectAnswers.length;
-          questionScore = Math.max(0, Math.min(questionScore, 4)); // Ensure score is between 0 and 4
+    
+      if (question.question_type === 'written') {
+        const correctAnswers = Array.isArray(question.correct_answers) ? question.correct_answers : JSON.parse(question.correct_answers || '[]');
+        if (Array.isArray(userAnswer)) {
+          questionScore = userAnswer.reduce((score, answer) => {
+            if (correctAnswers.includes(answer)) {
+              return score + 1;
+            }
+            return score;
+          }, 0);
         }
-      } else if (question.question_type === 'multiple' || question.question_type === 'truefalse') {
-        if (question.correct_answers && question.correct_answers.includes(userAnswer)) {
+      } else if (question.question_type === 'multiple' && question.id === 37) {
+        const correctAnswers = Array.isArray(question.correct_answers) ? question.correct_answers : JSON.parse(question.correct_answers || '[]');
+        const maxPointsForQuestion14 = 4; // Set the max score to 4 for question 14
+        const correctCount = userAnswer.filter(answer => correctAnswers.includes(answer)).length;
+        const incorrectCount = userAnswer.filter(answer => !correctAnswers.includes(answer)).length;
+        questionScore = Math.max(0, correctCount - incorrectCount);
+        questionPoints = maxPointsForQuestion14; // Reassign the maximum points to 4 for question 14
+      } else if (question.question_type === 'multiple') {
+        const correctAnswers = Array.isArray(question.correct_answers) ? question.correct_answers : JSON.parse(question.correct_answers || '[]');
+        if (userAnswer && correctAnswers.includes(userAnswer)) {
           questionScore = questionPoints;
         }
-      } else if (question.question_type === 'written') {
-        if (Array.isArray(userAnswer) && Array.isArray(question.correct_answers)) {
-          const correctCount = userAnswer.filter(answer => question.correct_answers.includes(answer)).length;
-          questionScore = Math.min(correctCount, questionPoints);
+      } else if (question.question_type === 'truefalse') {
+        const correctAnswer = Array.isArray(question.correct_answers) ? question.correct_answers[0] : JSON.parse(question.correct_answers || '[]')[0];
+        if (userAnswer !== null && userAnswer !== undefined) {
+          const normalizedUserAnswer = userAnswer === 'true' ? 'صح' : 'خطأ';
+          if (normalizedUserAnswer === correctAnswer) {
+            questionScore = questionPoints;
+          }
         }
       }
 
+      // Cap the score at the maximum points for the question
+      questionScore = Math.min(questionScore, questionPoints);
+
       totalScore += questionScore;
-      scoredAnswers[`${Math.floor(index / 15)}-${index % 15}`] = {
-        userAnswer,
+      scoredAnswers[question.id] = {
+        userAnswer: userAnswer !== null && userAnswer !== undefined ? 
+          (question.question_type === 'truefalse' ? (userAnswer === 'true' ? 'صح' : 'خطأ') : userAnswer) 
+          : null,
         correctAnswer: question.correct_answers,
         score: questionScore,
-        maxScore: question.id === 37 ? 4 : questionPoints // Set maxScore to 4 for question 37
+        maxScore: questionPoints
       };
     });
 
@@ -87,13 +110,13 @@ export async function submitExam(formData) {
       user_name: userName,
       id_number: userId,
       phone_number: phoneNumber,
-      score: totalScore,
-      max_score: maxScore,
+      score: Math.round(totalScore),
+      max_score: Math.round(maxScore),
       answers: scoredAnswers,
-      created_at: new Date(),
+      created_at: new Date().toISOString(),
     });
     if (insertError) throw insertError;
-   
+    
     return { success: true, score: totalScore, maxScore, scoredAnswers };
   } catch (error) {
     console.error('Error submitting exam:', error.message);

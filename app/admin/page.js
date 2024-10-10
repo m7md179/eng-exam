@@ -200,7 +200,7 @@ export default function AdminPage() {
     if (!selectedResult) return null;
   
     return (
-      <div ref={reviewSectionRef} className={`mt-8 bg-white p-6 rounded-lg shadow-lg w-full max-w-6xl border-t-4 border-green-600 ${language === 'ar' ? 'text-right' : 'text-left'} ${language === 'ar' ? 'rtl' : 'ltr'}`}>
+      <div ref={reviewSectionRef} className={`mt-8 bg-white p-6 rounded-lg shadow-lg w-full max-w-6xl border-t-4 border-green-600 ${language === 'ar' ? 'text-right' : 'text-left'} `} style={{ direction: language === 'ar' ? 'rtl' : 'ltr' }}>
         <h3 className="text-2xl font-semibold mb-4 text-green-800">
           {language === 'ar' ? `مراجعة الإجابات لـ ${selectedResult.user_name}` : `Answer Review for ${selectedResult.user_name}`}
         </h3>
@@ -209,38 +209,32 @@ export default function AdminPage() {
         {examQuestions.map((section, sectionIndex) => (
           <div key={sectionIndex} className="mb-6">
             <h4 className="text-lg font-medium mb-2 text-green-700">{section.name}</h4>
-            {section.questions.map((question, questionIndex) => {
-              const userAnswer = selectedResult.answers[`${sectionIndex}-${questionIndex}`];
+            {section.questions.map((question) => {
+              const answer = selectedResult.answers[question.id];
+              if (!answer) return null;
+
               let isCorrect = false;
               let correctAnswerDisplay = '';
-              let pointsEarned = 0;
+              let pointsEarned = answer.score;
   
               if (question.question_type === 'multiple') {
-                isCorrect = question.correct_answers && question.correct_answers.includes(userAnswer);
-                correctAnswerDisplay = question.correct_answers ? question.correct_answers.join(', ') : '';
-                pointsEarned = isCorrect ? question.points : 0;
+                isCorrect = answer.score === answer.maxScore;
+                correctAnswerDisplay = Array.isArray(answer.correctAnswer) ? answer.correctAnswer.join(', ') : answer.correctAnswer;
               } else if (question.question_type === 'truefalse') {
-                isCorrect = userAnswer !== undefined && question.correct_answers && question.correct_answers.includes(userAnswer.toString());
-                correctAnswerDisplay = question.correct_answers ? (question.correct_answers[0] === 'true' ? (language === 'ar' ? 'صحيح' : 'True') : (language === 'ar' ? 'خطأ' : 'False')) : '';
-                pointsEarned = isCorrect ? question.points : 0;
+                isCorrect = answer.score === answer.maxScore;
+                correctAnswerDisplay = answer.correctAnswer === 'true' ? (language === 'ar' ? 'صح' : 'True') : (language === 'ar' ? 'خطأ' : 'False');
               } else if (question.question_type === 'written') {
-                if (Array.isArray(userAnswer) && Array.isArray(question.correct_answers)) {
-                  const correctAnswers = userAnswer.filter(answer => question.correct_answers.includes(answer));
-                  pointsEarned = correctAnswers.length;
-                  isCorrect = correctAnswers.length === question.correct_answers.length;
-                }
-                correctAnswerDisplay = question.correct_answers ? question.correct_answers.join(', ') : '';
+                isCorrect = answer.score === answer.maxScore;
+                correctAnswerDisplay = Array.isArray(answer.correctAnswer) ? answer.correctAnswer.join(', ') : answer.correctAnswer;
               }
   
               return (
-                <div key={questionIndex} className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <div key={question.id} className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
                   <p className="font-medium text-gray-700">{question.question_text}</p>
                   <p className="mt-2">
                     {language === 'ar' ? 'إجابة المستخدم: ' : 'User Answer: '}
-                    {userAnswer !== undefined ? (
-                      question.question_type === 'truefalse' ? 
-                        (userAnswer === 'true' ? (language === 'ar' ? 'صحيح' : 'True') : (language === 'ar' ? 'خطأ' : 'False')) : 
-                        (Array.isArray(userAnswer) ? userAnswer.join(', ') : userAnswer.toString())
+                    {answer.userAnswer !== null ? (
+                      Array.isArray(answer.userAnswer) ? answer.userAnswer.join(', ') : answer.userAnswer.toString()
                     ) : (
                       language === 'ar' ? 'لم تتم الإجابة' : 'Not answered'
                     )}
@@ -249,12 +243,12 @@ export default function AdminPage() {
                     {language === 'ar' ? 'الإجابة الصحيحة: ' : 'Correct Answer: '}
                     {correctAnswerDisplay}
                   </p>
-                  {question.question_type === 'written' && Array.isArray(userAnswer) && Array.isArray(question.correct_answers) && (
+                  {question.question_type === 'written' && Array.isArray(answer.userAnswer) && Array.isArray(answer.correctAnswer) && (
                     <div className="mt-1">
-                      {userAnswer.map((answer, index) => (
-                        <p key={index} className={question.correct_answers.includes(answer) ? 'text-green-600' : 'text-red-600'}>
+                      {answer.userAnswer.map((userAns, index) => (
+                        <p key={index} className={answer.correctAnswer.includes(userAns) ? 'text-green-600' : 'text-red-600'}>
                           {language === 'ar' ? `الخيار ${index + 1}: ` : `Option ${index + 1}: `}
-                          {question.correct_answers.includes(answer) ? 
+                          {answer.correctAnswer.includes(userAns) ? 
                             (language === 'ar' ? 'صحيح' : 'Correct') : 
                             (language === 'ar' ? 'خاطئ' : 'Incorrect')}
                         </p>
@@ -265,7 +259,7 @@ export default function AdminPage() {
                     {isCorrect ? (language === 'ar' ? 'صحيح' : 'Correct') : (language === 'ar' ? 'خاطئ' : 'Incorrect')}
                   </p>
                   <p className="mt-1">
-                    {language === 'ar' ? `النقاط المكتسبة: ${pointsEarned} من ${question.points}` : `Points earned: ${pointsEarned} out of ${question.points}`}
+                    {language === 'ar' ? `النقاط المكتسبة: ${pointsEarned} من ${answer.maxScore}` : `Points earned: ${pointsEarned} out of ${answer.maxScore}`}
                   </p>
                 </div>
               );
