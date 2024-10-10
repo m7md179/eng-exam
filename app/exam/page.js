@@ -545,27 +545,6 @@ export default function ExamPage() {
           </DialogContent>
         </Dialog>
 
-        {/* <Dialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{language === 'ar' ? 'إعادة تعيين الاختبار' : 'Reset Exam'}</DialogTitle>
-            </DialogHeader>
-            <p>
-              {language === 'ar'
-                ? 'هل تريد إعادة تعيين الاختبار أم الاستمرار من حيث توقفت؟'
-                : 'Do you want to reset the exam or continue where you left off?'}
-            </p>
-            <DialogFooter>
-              <Button onClick={resetExam} variant="outline">
-                {language === 'ar' ? 'إعادة تعيين' : 'Reset'}
-              </Button>
-              <Button onClick={continueExam} className="bg-green-500 hover:bg-green-600 text-white">
-                {language === 'ar' ? 'استمرار' : 'Continue'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog> */}
-
         <Dialog open={isRefreshDialogOpen} onOpenChange={setIsRefreshDialogOpen}>
           <DialogContent>
             <DialogHeader>

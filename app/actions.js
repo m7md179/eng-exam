@@ -72,8 +72,9 @@ export async function submitExam(formData) {
       } else if (question.question_type === 'multiple' && question.id === 37) {
         const correctAnswers = Array.isArray(question.correct_answers) ? question.correct_answers : JSON.parse(question.correct_answers || '[]');
         const maxPointsForQuestion14 = 4; // Set the max score to 4 for question 14
-        const correctCount = userAnswer.filter(answer => correctAnswers.includes(answer)).length;
-        const incorrectCount = userAnswer.filter(answer => !correctAnswers.includes(answer)).length;
+        const userAnswerArray = Array.isArray(userAnswer) ? userAnswer : (userAnswer ? [userAnswer] : []);
+        const correctCount = userAnswerArray.filter(answer => correctAnswers.includes(answer)).length;
+        const incorrectCount = userAnswerArray.filter(answer => !correctAnswers.includes(answer)).length;
         questionScore = Math.max(0, correctCount - incorrectCount);
         questionPoints = maxPointsForQuestion14; // Reassign the maximum points to 4 for question 14
       } else if (question.question_type === 'multiple') {
