@@ -191,8 +191,8 @@ export default function Home() {
                 ? 'شعار نقابة المهندسين الأردنيين'
                 : 'Jordan Engineers Association Logo'
             }
-            width={80}
-            height={80}
+            width={150}
+            height={150}
             layout="fixed"
           />
         </div>
