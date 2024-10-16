@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { ToastContainer, toast } from 'react-toastify'
 import {
@@ -44,6 +44,35 @@ export default function ExamPage() {
   const [flaggedQuestions, setFlaggedQuestions] = useState({})
   const [timeRemaining, setTimeRemaining] = useState(60 * 60) // 60 minutes in seconds
   const [isTimerDialogOpen, setIsTimerDialogOpen] = useState(false)
+
+  const fetchExamQuestionsData = useCallback(async () => {
+    try {
+      const result = await fetchExamQuestions()
+      if (result.success) {
+        setExamSections(result.examSections)
+
+        const allOptions = result.examSections.map((section) =>
+          section.questions
+            .filter((q) => q.type === 'written')
+            .flatMap((q) => q.options)
+        )
+        setAllDragDropOptions(
+          allOptions.map((options) => shuffleArray([...options]))
+        )
+      } else {
+        throw new Error(result.error)
+      }
+    } catch (error) {
+      console.error('Error fetching exam questions:', error.message)
+      toast.error(
+        language === 'ar'
+          ? `خطأ في جلب أسئلة الاختبار: ${error.message}`
+          : `Error fetching exam questions: ${error.message}`
+      )
+    } finally {
+      setLoading(false)
+    }
+  }, [language])
 
   useEffect(() => {
     const storedUserName = localStorage.getItem('userName')
@@ -105,36 +134,36 @@ export default function ExamPage() {
       window.removeEventListener('scroll', handleScroll)
       clearInterval(timer)
     }
-  }, [router])
+  }, [router, fetchExamQuestionsData])
 
-  const fetchExamQuestionsData = async () => {
-    try {
-      const result = await fetchExamQuestions()
-      if (result.success) {
-        setExamSections(result.examSections)
+  // const fetchExamQuestionsData = async () => {
+  //   try {
+  //     const result = await fetchExamQuestions()
+  //     if (result.success) {
+  //       setExamSections(result.examSections)
 
-        const allOptions = result.examSections.map((section) =>
-          section.questions
-            .filter((q) => q.type === 'written')
-            .flatMap((q) => q.options)
-        )
-        setAllDragDropOptions(
-          allOptions.map((options) => shuffleArray([...options]))
-        )
-      } else {
-        throw new Error(result.error)
-      }
-    } catch (error) {
-      console.error('Error fetching exam questions:', error.message)
-      toast.error(
-        language === 'ar'
-          ? `خطأ في جلب أسئلة الاختبار: ${error.message}`
-          : `Error fetching exam questions: ${error.message}`
-      )
-    } finally {
-      setLoading(false)
-    }
-  }
+  //       const allOptions = result.examSections.map((section) =>
+  //         section.questions
+  //           .filter((q) => q.type === 'written')
+  //           .flatMap((q) => q.options)
+  //       )
+  //       setAllDragDropOptions(
+  //         allOptions.map((options) => shuffleArray([...options]))
+  //       )
+  //     } else {
+  //       throw new Error(result.error)
+  //     }
+  //   } catch (error) {
+  //     console.error('Error fetching exam questions:', error.message)
+  //     toast.error(
+  //       language === 'ar'
+  //         ? `خطأ في جلب أسئلة الاختبار: ${error.message}`
+  //         : `Error fetching exam questions: ${error.message}`
+  //     )
+  //   } finally {
+  //     setLoading(false)
+  //   }
+  // }
 
   const shuffleArray = (array) => {
     for (let i = array.length - 1; i > 0; i--) {

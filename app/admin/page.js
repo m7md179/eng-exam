@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '@/utils/supabase'
 import { useRouter } from 'next/navigation'
 import { ToastContainer, toast } from 'react-toastify'
@@ -36,6 +36,37 @@ export default function AdminPage() {
   const router = useRouter()
   const reviewSectionRef = useRef(null)
 
+  const verifyAdmin = useCallback(
+    async (email) => {
+      try {
+        const { data, error } = await supabase
+          .from('admins')
+          .select('*')
+          .eq('email', email)
+
+        if (error) throw error
+        if (data.length > 0) {
+          setIsAdmin(true)
+          fetchResults()
+          fetchExamQuestions()
+        } else {
+          router.push('/')
+        }
+      } catch (error) {
+        console.error('Error checking admin access:', error.message)
+        toast.error(
+          language === 'ar'
+            ? `خطأ في التحقق من صلاحيات المسؤول: ${error.message}`
+            : `Error checking admin access: ${error.message}`
+        )
+        router.push('/')
+      } finally {
+        setLoading(false)
+      }
+    },
+    [router, language]
+  )
+
   useEffect(() => {
     const savedLanguage = localStorage.getItem('language')
     if (savedLanguage) {
@@ -63,41 +94,7 @@ export default function AdminPage() {
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload)
     }
-  }, [router])
-
-  const toggleLanguage = () => {
-    const newLanguage = language === 'ar' ? 'en' : 'ar'
-    setLanguage(newLanguage)
-    localStorage.setItem('language', newLanguage)
-  }
-
-  const verifyAdmin = async (email) => {
-    try {
-      const { data, error } = await supabase
-        .from('admins')
-        .select('*')
-        .eq('email', email)
-
-      if (error) throw error
-      if (data.length > 0) {
-        setIsAdmin(true)
-        fetchResults()
-        fetchExamQuestions()
-      } else {
-        router.push('/')
-      }
-    } catch (error) {
-      console.error('Error checking admin access:', error.message)
-      toast.error(
-        language === 'ar'
-          ? `خطأ في التحقق من صلاحيات المسؤول: ${error.message}`
-          : `Error checking admin access: ${error.message}`
-      )
-      router.push('/')
-    } finally {
-      setLoading(false)
-    }
-  }
+  }, [router, verifyAdmin])
 
   const fetchResults = async () => {
     try {
@@ -149,6 +146,12 @@ export default function AdminPage() {
           : `Error fetching exam questions: ${error.message}`
       )
     }
+  }
+
+  const toggleLanguage = () => {
+    const newLanguage = language === 'ar' ? 'en' : 'ar'
+    setLanguage(newLanguage)
+    localStorage.setItem('language', newLanguage)
   }
 
   const handleResultClick = (result) => {
@@ -657,8 +660,8 @@ export default function AdminPage() {
             </DialogHeader>
             <div className="py-4">
               <p>
-                Are you sure you want to delete {resultToDelete?.user_name}'s
-                result?
+                Are you sure you want to delete {resultToDelete?.user_name}
+                &apos;s result?
               </p>
               <Input
                 type="email"
