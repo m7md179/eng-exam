@@ -1,4 +1,5 @@
 'use client'
+
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '@/utils/supabase'
 import { useRouter } from 'next/navigation'
@@ -661,7 +662,7 @@ export default function AdminPage() {
             <div className="py-4">
               <p>
                 Are you sure you want to delete {resultToDelete?.user_name}
-                &apos;s result?
+                {"'"}s result?
               </p>
               <Input
                 type="email"
